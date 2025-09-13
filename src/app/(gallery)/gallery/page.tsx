@@ -34,7 +34,7 @@ async function getMarsPhotos(params: {
   earth_date?: string;
   camera?: string;
   page?: number;
-}): Promise<MarsPhoto[]> {
+}): Promise<MarsPhoto[] | "RATE_LIMIT"> {
   const { rover = "curiosity", earth_date = "2020-07-01", camera = "", page = 1 } = params;
   
   try {
@@ -48,6 +48,12 @@ async function getMarsPhotos(params: {
     }
 
     const res = await fetch(url.toString());
+
+    if (res.status === 429) {
+      console.warn("Limite de requisições da NASA atingido 🚨");
+      return "RATE_LIMIT";
+    }
+
     if (!res.ok) {
       throw new Error(`Erro na API: ${res.status} ${res.statusText}`);
     }
@@ -64,6 +70,7 @@ async function getMarsPhotos(params: {
 export default function GalleryPage() {
   const [photos, setPhotos] = useState<MarsPhoto[]>([]);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     rover: "Curiosity",
     camera: "",
@@ -73,6 +80,8 @@ export default function GalleryPage() {
 
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
+    setErrorMsg(null);
+
     try {
       const data = await getMarsPhotos({
         rover: filters.rover.toLowerCase(),
@@ -80,9 +89,17 @@ export default function GalleryPage() {
         camera: filters.camera,
         page: page
       });
+
+      if (data === "RATE_LIMIT") {
+        setErrorMsg("🚨 Limite de requisições da NASA atingido. Tente novamente mais tarde.");
+        setPhotos([]);
+        return;
+      }
+
       setPhotos(data);
     } catch (error) {
       console.error("Erro ao buscar imagens:", error);
+      setErrorMsg("Erro inesperado ao buscar fotos. Tente novamente.");
       setPhotos([]);
     } finally {
       setLoading(false);
@@ -94,9 +111,7 @@ export default function GalleryPage() {
   }, [fetchPhotos]);
 
   const showPagination = photos.length > 0;
-  
   const hasMore = photos.length > IMAGES_MAX;
-
   const visiblePhotos = photos.slice(0, IMAGES_MAX);
 
   return (
@@ -115,6 +130,14 @@ export default function GalleryPage() {
           <div className="text-center py-16">
             <p className="text-gray-600 text-lg mb-4">Carregando fotos...</p>
             <div className="mt-4 inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500"></div>
+          </div>
+        ) : errorMsg ? (
+          <div className="text-center py-16 bg-red-50 rounded-lg">
+            <p className="text-red-600 text-lg mb-2">{errorMsg}</p>
+            <p className="text-gray-500 text-sm">
+              Isso pode acontecer se você estiver usando a chave DEMO_KEY.
+              Configure uma chave própria no <code>.env.local</code>.
+            </p>
           </div>
         ) : visiblePhotos.length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-lg">
